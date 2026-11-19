@@ -5,8 +5,6 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.provider.MediaStore
 import android.view.Gravity
 import android.view.View
@@ -22,15 +20,6 @@ class MainActivity : Activity() {
     private lateinit var toggle: Button
     private lateinit var list: LinearLayout
     private val captureRequest = 4102
-    private val statusHandler = Handler(Looper.getMainLooper())
-    private val statusUpdater = object : Runnable {
-        override fun run() {
-            if (::status.isInitialized && ::toggle.isInitialized) {
-                syncRecordingState()
-                statusHandler.postDelayed(this, 1000)
-            }
-        }
-    }
     private val preferences by lazy { getSharedPreferences(RecordingService.PREFS, MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -166,28 +155,8 @@ class MainActivity : Activity() {
     private fun syncRecordingState() {
         val active = preferences.getBoolean(RecordingService.KEY_RECORDING, false)
         toggle.isEnabled = true
-        toggle.text = if (active) "Stop recording" else "Start recording"
-        if (active) {
-            val startedAt = preferences.getLong(RecordingService.KEY_STARTED_AT, System.currentTimeMillis())
-            val elapsedSeconds = ((System.currentTimeMillis() - startedAt).coerceAtLeast(0L) / 1000L)
-            val hours = elapsedSeconds / 3600
-            val minutes = (elapsedSeconds % 3600) / 60
-            val seconds = elapsedSeconds % 60
-            val elapsed = if (hours > 0) {
-                String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
-            } else {
-                String.format(Locale.US, "%02d:%02d", minutes, seconds)
-            }
-            status.text = "●  RECORDING  •  $elapsed"
-            status.setTextColor(0xFFFF6666.toInt())
-            status.setBackgroundColor(0xFF3A2024.toInt())
-            status.contentDescription = "Recording in progress. Duration $elapsed"
-        } else {
-            status.text = "●  NOT RECORDING"
-            status.setTextColor(0xFFE4EDF2.toInt())
-            status.setBackgroundColor(0xFF1C2A35.toInt())
-            status.contentDescription = "Screen recording is off"
-        }
+        toggle.text = if (active) "Turn recording OFF" else "Turn recording ON"
+        status.text = if (active) "Screen recording is ON" else "Screen recording is OFF"
     }
 
     private fun refreshRecordings() {
@@ -257,15 +226,6 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (::list.isInitialized) refreshRecordings()
-        if (::toggle.isInitialized) {
-            syncRecordingState()
-            statusHandler.removeCallbacks(statusUpdater)
-            statusHandler.post(statusUpdater)
-        }
-    }
-
-    override fun onPause() {
-        statusHandler.removeCallbacks(statusUpdater)
-        super.onPause()
+        if (::toggle.isInitialized) syncRecordingState()
     }
 }
