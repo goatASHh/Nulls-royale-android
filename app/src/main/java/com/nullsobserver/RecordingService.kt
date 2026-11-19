@@ -27,6 +27,8 @@ class RecordingService : Service() {
         const val ACTION_STOP = "com.nullsobserver.STOP"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
+        const val PREFS = "nulls_observer_state"
+        const val KEY_RECORDING = "recording_active"
         private const val CHANNEL_ID = "capture"
         private const val NOTIFICATION_ID = 73
     }
@@ -37,6 +39,7 @@ class RecordingService : Service() {
     private var outputUri: android.net.Uri? = null
     private var outputDescriptor: android.os.ParcelFileDescriptor? = null
     private var isRecording = false
+    private var isStopping = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -66,7 +69,7 @@ class RecordingService : Service() {
             intent?.getParcelableExtra(EXTRA_RESULT_DATA)
         }
         if (resultCode == 0 || resultData == null) {
-            stopSelf()
+            stopCapture()
             return START_NOT_STICKY
         }
 
@@ -117,7 +120,14 @@ class RecordingService : Service() {
             prepare()
         }
 
-        display = projection?.createVirtualDisplay(
+        val activeProjection = projection ?: error("Screen capture session unavailable")
+        activeProjection.registerCallback(object : MediaProjection.Callback() {
+            override fun onStop() {
+                stopCapture()
+            }
+        }, null)
+
+        display = activeProjection.createVirtualDisplay(
             "NullsObserverCapture",
             width - (width % 2),
             height - (height % 2),
@@ -129,14 +139,12 @@ class RecordingService : Service() {
         )
         recorder?.start()
         isRecording = true
-        projection?.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() {
-                stopCapture()
-            }
-        }, null)
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_RECORDING, true).apply()
     }
 
     private fun stopCapture() {
+        if (isStopping) return
+        isStopping = true
         if (isRecording) {
             runCatching { recorder?.stop() }
             isRecording = false
@@ -146,8 +154,11 @@ class RecordingService : Service() {
         runCatching { recorder?.reset() }
         runCatching { recorder?.release() }
         recorder = null
-        runCatching { projection?.stop() }
+
+        val oldProjection = projection
         projection = null
+        runCatching { oldProjection?.stop() }
+
         runCatching { outputDescriptor?.close() }
         outputDescriptor = null
         outputUri?.let { uri ->
@@ -157,6 +168,7 @@ class RecordingService : Service() {
             runCatching { contentResolver.update(uri, values, null, null) }
         }
         outputUri = null
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_RECORDING, false).apply()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -180,15 +192,15 @@ class RecordingService : Service() {
         )
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("Nulls Observer is recording")
-            .setContentText("Tap Stop when the match is finished.")
+            .setContentText("Tap Stop to turn recording off.")
             .setSmallIcon(android.R.drawable.presence_video_online)
             .setOngoing(true)
-            .addAction(Notification.Action.Builder(null, "Stop", pending).build())
+            .addAction(Notification.Action.Builder(null, "Turn off", pending).build())
             .build()
     }
 
     override fun onDestroy() {
-        if (isRecording || projection != null) stopCapture()
+        if (!isStopping && (isRecording || projection != null)) stopCapture()
         super.onDestroy()
     }
 }
