@@ -4,6 +4,10 @@ import android.app.Activity
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
+import android.graphics.Typeface
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.Gravity
@@ -19,7 +23,10 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var toggle: Button
     private lateinit var list: LinearLayout
+    private lateinit var analysisResult: TextView
     private val captureRequest = 4102
+    private val screenshotRequest = 4103
+    private val analysisKey = "last_screenshot_analysis"
     private val preferences by lazy { getSharedPreferences(RecordingService.PREFS, MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,6 +87,29 @@ class MainActivity : Activity() {
             setPadding(dp(18), dp(10), dp(18), dp(10))
             setOnClickListener { refreshRecordings() }
         }
+        val analyze = Button(this).apply {
+            text = "Analyze game screenshot"
+            textSize = 16f
+            isAllCaps = false
+            minHeight = dp(56)
+            minimumHeight = dp(56)
+            setPadding(dp(18), dp(10), dp(18), dp(10))
+            setOnClickListener { chooseScreenshot() }
+        }
+        val analysisHeading = TextView(this).apply {
+            text = "Latest screenshot analysis"
+            textSize = 20f
+            setTextColor(0xFFFFFFFF.toInt())
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, dp(24), 0, dp(10))
+        }
+        analysisResult = TextView(this).apply {
+            text = preferences.getString(analysisKey, "Choose a game screenshot to begin.")
+            textSize = 15f
+            setTextColor(0xFFD9E5EC.toInt())
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            setBackgroundColor(0xFF1C2A35.toInt())
+        }
         val heading = TextView(this).apply {
             text = "Saved recordings"
             textSize = 20f
@@ -97,7 +127,10 @@ class MainActivity : Activity() {
         content.addView(toggle, matchWidth().apply {
             bottomMargin = dp(12)
         })
-        content.addView(refresh, matchWidth())
+        content.addView(refresh, matchWidth().apply { bottomMargin = dp(10) })
+        content.addView(analyze, matchWidth())
+        content.addView(analysisHeading)
+        content.addView(analysisResult, matchWidth())
         content.addView(heading)
         content.addView(list)
 
@@ -133,6 +166,14 @@ class MainActivity : Activity() {
     @Deprecated("Activity result API kept minimal for broad device compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == screenshotRequest) {
+            if (resultCode == RESULT_OK && data?.data != null) {
+                analyzeScreenshot(data.data!!)
+            } else {
+                analysisResult.text = "No screenshot selected."
+            }
+            return
+        }
         if (requestCode != captureRequest) return
         if (resultCode != RESULT_OK || data == null) {
             status.text = "Screen recording is OFF — permission was not granted."
@@ -152,6 +193,42 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun chooseScreenshot() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        @Suppress("DEPRECATION")
+        startActivityForResult(intent, screenshotRequest)
+    }
+
+    private fun analyzeScreenshot(uri: Uri) {
+        analysisResult.text = "Reading screenshot…"
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+            val image = InputImage.fromFilePath(this, uri)
+            recognizer.process(image)
+                .addOnSuccessListener { result ->
+                    val extracted = result.text.trim()
+                    val output = if (extracted.isBlank()) {
+                        "No readable game text was detected. Try a clearer screenshot."
+                    } else {
+                        "SCREENSHOT TEXT\n\n$extracted\n\nNote: This is raw text recognition. Match statistics and gameplay interpretation will be added in a later bot update."
+                    }
+                    analysisResult.text = output
+                    preferences.edit().putString(analysisKey, output).apply()
+                    recognizer.close()
+                }
+                .addOnFailureListener { error ->
+                    analysisResult.text = "Could not read this screenshot: " + (error.localizedMessage ?: "unknown error")
+                    recognizer.close()
+                }
+        } catch (error: Exception) {
+            analysisResult.text = "Could not open this image: " + (error.localizedMessage ?: "unknown error")
+            recognizer.close()
+        }
+    }
     private fun syncRecordingState() {
         val active = preferences.getBoolean(RecordingService.KEY_RECORDING, false)
         toggle.isEnabled = true
