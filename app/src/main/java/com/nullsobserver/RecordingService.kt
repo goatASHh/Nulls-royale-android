@@ -29,6 +29,7 @@ class RecordingService : Service() {
         const val EXTRA_RESULT_DATA = "result_data"
         const val PREFS = "nulls_observer_state"
         const val KEY_RECORDING = "recording_active"
+        const val KEY_STARTED_AT = "recording_started_at"
         private const val CHANNEL_ID = "capture"
         private const val NOTIFICATION_ID = 73
     }
@@ -139,7 +140,13 @@ class RecordingService : Service() {
         )
         recorder?.start()
         isRecording = true
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_RECORDING, true).apply()
+        val startedAt = System.currentTimeMillis()
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putBoolean(KEY_RECORDING, true)
+            .putLong(KEY_STARTED_AT, startedAt)
+            .apply()
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, buildNotification())
     }
 
     private fun stopCapture() {
@@ -168,7 +175,10 @@ class RecordingService : Service() {
             runCatching { contentResolver.update(uri, values, null, null) }
         }
         outputUri = null
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_RECORDING, false).apply()
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putBoolean(KEY_RECORDING, false)
+            .remove(KEY_STARTED_AT)
+            .apply()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -190,12 +200,16 @@ class RecordingService : Service() {
             stopIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val startedAt = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getLong(KEY_STARTED_AT, System.currentTimeMillis())
         return Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("Nulls Observer is recording")
-            .setContentText("Tap Stop to turn recording off.")
+            .setContentTitle("Nulls Observer • RECORDING")
+            .setContentText("Recording screen • Tap Stop to finish")
             .setSmallIcon(android.R.drawable.presence_video_online)
+            .setWhen(startedAt)
+            .setUsesChronometer(true)
             .setOngoing(true)
-            .addAction(Notification.Action.Builder(null, "Turn off", pending).build())
+            .addAction(Notification.Action.Builder(null, "Stop recording", pending).build())
             .build()
     }
 
