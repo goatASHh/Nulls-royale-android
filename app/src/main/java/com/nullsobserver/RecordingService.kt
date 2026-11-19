@@ -18,6 +18,9 @@ import android.os.IBinder
 import android.provider.MediaStore
 import android.util.DisplayMetrics
 import android.view.WindowManager
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -161,11 +164,16 @@ class RecordingService : Service() {
 
         runCatching { outputDescriptor?.close() }
         outputDescriptor = null
-        outputUri?.let { uri ->
+        val completedUri = outputUri
+        completedUri?.let { uri ->
             val values = ContentValues().apply {
                 if (Build.VERSION.SDK_INT >= 29) put(MediaStore.Video.Media.IS_PENDING, 0)
             }
             runCatching { contentResolver.update(uri, values, null, null) }
+            val request = OneTimeWorkRequestBuilder<MatchAnalysisWorker>()
+                .setInputData(workDataOf(MatchAnalysisWorker.KEY_VIDEO_URI to uri.toString()))
+                .build()
+            WorkManager.getInstance(applicationContext).enqueue(request)
         }
         outputUri = null
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_RECORDING, false).apply()
