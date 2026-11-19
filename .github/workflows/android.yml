@@ -5,6 +5,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -23,8 +27,19 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Build debug APK
-        run: gradle assembleDebug --stacktrace
+      - name: Build debug APK (retry transient repository errors)
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            echo "Build attempt ${attempt}/3"
+            if gradle assembleDebug --stacktrace; then
+              exit 0
+            fi
+            if [ "${attempt}" -lt 3 ]; then
+              sleep $((attempt * 20))
+            fi
+          done
+          exit 1
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
