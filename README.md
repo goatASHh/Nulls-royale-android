@@ -4,6 +4,8 @@ A local-first Android companion for recording and reviewing Null's Royale matche
 
 ## Current scope
 
+- A single in-app recording toggle: **Turn recording ON** requests Android screen-capture consent; **Turn recording OFF** stops and finalizes the current MP4.
+- Recording state is reflected in the app and can also be stopped from the persistent notification.
 - Explicit Android screen-capture consent before every recording session.
 - Foreground recording service with a persistent Stop notification.
 - H.264 MP4 recordings saved under **Movies/NullsObserver**.
