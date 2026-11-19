@@ -24,6 +24,7 @@ class MainActivity : Activity() {
     private lateinit var toggle: Button
     private lateinit var list: LinearLayout
     private lateinit var analysisResult: TextView
+    private lateinit var matchReport: TextView
     private val captureRequest = 4102
     private val screenshotRequest = 4103
     private val analysisKey = "last_screenshot_analysis"
@@ -110,6 +111,20 @@ class MainActivity : Activity() {
             setPadding(dp(14), dp(14), dp(14), dp(14))
             setBackgroundColor(0xFF1C2A35.toInt())
         }
+        val matchHeading = TextView(this).apply {
+            text = "Latest match report"
+            textSize = 20f
+            setTextColor(0xFFFFFFFF.toInt())
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, dp(24), 0, dp(10))
+        }
+        matchReport = TextView(this).apply {
+            text = preferences.getString(MatchAnalysisWorker.KEY_LAST_REPORT, "Record a match to generate an automatic report.")
+            textSize = 15f
+            setTextColor(0xFFD9E5EC.toInt())
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            setBackgroundColor(0xFF1C2A35.toInt())
+        }
         val heading = TextView(this).apply {
             text = "Saved recordings"
             textSize = 20f
@@ -131,6 +146,8 @@ class MainActivity : Activity() {
         content.addView(analyze, matchWidth())
         content.addView(analysisHeading)
         content.addView(analysisResult, matchWidth())
+        content.addView(matchHeading)
+        content.addView(matchReport, matchWidth())
         content.addView(heading)
         content.addView(list)
 
@@ -305,5 +322,8 @@ class MainActivity : Activity() {
         super.onResume()
         if (::list.isInitialized) refreshRecordings()
         if (::toggle.isInitialized) syncRecordingState()
+        if (::matchReport.isInitialized) {
+            matchReport.text = preferences.getString(MatchAnalysisWorker.KEY_LAST_REPORT, "Record a match to generate an automatic report.")
+        }
     }
 }
