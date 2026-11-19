@@ -18,7 +18,6 @@ import android.os.IBinder
 import android.provider.MediaStore
 import android.util.DisplayMetrics
 import android.view.WindowManager
-import java.io.FileDescriptor
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -49,7 +48,7 @@ class RecordingService : Service() {
 
         createNotificationChannel()
         val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >=  Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 NOTIFICATION_ID,
                 notification,
