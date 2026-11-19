@@ -15,13 +15,16 @@ import android.widget.Toast
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
+    private lateinit var toggle: Button
     private lateinit var list: LinearLayout
     private val captureRequest = 4102
+    private val preferences by lazy { getSharedPreferences(RecordingService.PREFS, MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         buildScreen()
         refreshRecordings()
+        syncRecordingState()
     }
 
     private fun buildScreen() {
@@ -43,32 +46,19 @@ class MainActivity : Activity() {
             setPadding(0, 6, 0, 24)
         }
         status = TextView(this).apply {
-            text = "Ready. Start a match before recording."
+            text = "Screen recording is OFF"
             textSize = 14f
             setTextColor(0xFFE4EDF2.toInt())
-            setPadding(0, 8, 0, 18)
+            setPadding(0, 8, 0, 12)
         }
-
-        val start = Button(this).apply {
-            text = "Start screen recording"
-            setOnClickListener {
-                val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                @Suppress("DEPRECATION")
-                startActivityForResult(manager.createScreenCaptureIntent(), captureRequest)
-            }
-        }
-        val stop = Button(this).apply {
-            text = "Stop recording"
-            setOnClickListener {
-                startService(Intent(this@MainActivity, RecordingService::class.java).setAction(RecordingService.ACTION_STOP))
-                status.text = "Stopping recording…"
-            }
+        toggle = Button(this).apply {
+            text = "Turn recording ON"
+            setOnClickListener { toggleRecording() }
         }
         val refresh = Button(this).apply {
             text = "Refresh recordings"
             setOnClickListener { refreshRecordings() }
         }
-
         val heading = TextView(this).apply {
             text = "Saved recordings"
             textSize = 18f
@@ -80,8 +70,7 @@ class MainActivity : Activity() {
         root.addView(title)
         root.addView(subtitle)
         root.addView(status)
-        root.addView(start, matchWidth())
-        root.addView(stop, matchWidth())
+        root.addView(toggle, matchWidth())
         root.addView(refresh, matchWidth())
         root.addView(heading)
         root.addView(list)
@@ -93,21 +82,45 @@ class MainActivity : Activity() {
         ViewGroup.LayoutParams.WRAP_CONTENT
     )
 
+    private fun toggleRecording() {
+        if (preferences.getBoolean(RecordingService.KEY_RECORDING, false)) {
+            startService(Intent(this, RecordingService::class.java).setAction(RecordingService.ACTION_STOP))
+            status.text = "Turning recording OFF…"
+            toggle.isEnabled = false
+        } else {
+            val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            @Suppress("DEPRECATION")
+            startActivityForResult(manager.createScreenCaptureIntent(), captureRequest)
+        }
+    }
+
     @Deprecated("Activity result API kept minimal for broad device compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != captureRequest) return
         if (resultCode != RESULT_OK || data == null) {
-            status.text = "Screen-capture permission was not granted."
+            status.text = "Screen recording is OFF — permission was not granted."
+            syncRecordingState()
             return
         }
         val service = Intent(this, RecordingService::class.java).apply {
             putExtra(RecordingService.EXTRA_RESULT_CODE, resultCode)
             putExtra(RecordingService.EXTRA_RESULT_DATA, data)
         }
-        startForegroundService(service)
-        status.text = "Recording. Use the notification or Stop button to finish."
-        Toast.makeText(this, "Recording started", Toast.LENGTH_SHORT).show()
+        try {
+            startForegroundService(service)
+            status.text = "Starting screen recording…"
+        } catch (error: Exception) {
+            status.text = "Could not start recording: ${error.localizedMessage ?: "unknown error"}"
+            syncRecordingState()
+        }
+    }
+
+    private fun syncRecordingState() {
+        val active = preferences.getBoolean(RecordingService.KEY_RECORDING, false)
+        toggle.isEnabled = true
+        toggle.text = if (active) "Turn recording OFF" else "Turn recording ON"
+        status.text = if (active) "Screen recording is ON" else "Screen recording is OFF"
     }
 
     private fun refreshRecordings() {
@@ -162,5 +175,6 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (::list.isInitialized) refreshRecordings()
+        if (::toggle.isInitialized) syncRecordingState()
     }
 }
