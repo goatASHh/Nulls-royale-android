@@ -214,7 +214,7 @@ class MainActivity : Activity() {
                     val output = if (extracted.isBlank()) {
                         "No readable game text was detected. Try a clearer screenshot."
                     } else {
-                        ScreenshotGameParser.analyze(extracted) +
+                        ScreenshotGameParser.analyze(result, image.width, image.height) +
                             "\n\nRECOGNIZED SCREENSHOT TEXT\n\n" + extracted
                     }
                     analysisResult.text = output
