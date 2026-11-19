@@ -1,48 +1,84 @@
 package com.nullsobserver
 
+import com.google.mlkit.vision.text.Text
+
 /**
- * Conservative parser for Null's Royale / Clash Royale-style result screenshots.
- * It only reports fields when OCR contains an explicit, recognizable label.
+ * First spatially-aware Null's Royale snapshot parser.
+ * OCR values are assigned by normalized screen position: opponent/red at the
+ * top, player/blue at the bottom. This is a snapshot parser, not a full match AI.
  */
 object ScreenshotGameParser {
-    fun analyze(ocrText: String): String {
-        val lines = ocrText.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        val normalized = lines.joinToString("\n").uppercase()
+    private data class LocatedLine(val text: String, val x: Float, val y: Float)
 
-        val outcome = when {
-            Regex("\\b(VICTORY|YOU WIN|WINNER)\\b").containsMatchIn(normalized) -> "Victory"
-            Regex("\\b(DEFEAT|YOU LOST|LOSS)\\b").containsMatchIn(normalized) -> "Defeat"
-            Regex("\\b(DRAW|TIE)\\b").containsMatchIn(normalized) -> "Draw"
-            else -> null
-        }
+    fun analyze(ocr: Text, imageWidth: Int, imageHeight: Int): String {
+        if (imageWidth <= 0 || imageHeight <= 0) return "Could not analyse this image: invalid dimensions."
 
-        val trophyLine = lines.firstOrNull {
-            Regex("(?i)\\b(troph(?:y|ies))\\b").containsMatchIn(it)
-        }
-        val trophyValue = trophyLine?.let {
-            Regex("[+−-]?\\s*\\d{1,4}").find(it)?.value?.replace(" ", "")
-        }
+        val lines = ocr.textBlocks.flatMap { block ->
+            block.lines.mapNotNull { line ->
+                val bounds = line.boundingBox ?: return@mapNotNull null
+                LocatedLine(
+                    line.text.trim(),
+                    (bounds.centerX().toFloat() / imageWidth).coerceIn(0f, 1f),
+                    (bounds.centerY().toFloat() / imageHeight).coerceIn(0f, 1f)
+                )
+            }
+        }.filter { it.text.isNotBlank() }
 
-        val crownLine = lines.firstOrNull {
-            Regex("(?i)\\b(crowns?|tower)\\b").containsMatchIn(it)
-        }
-        val crownScore = crownLine?.let {
-            Regex("\\b([0-3])\\s*[-:]\\s*([0-3])\\b").find(it)?.value
-        }
+        fun valueIn(region: (LocatedLine) -> Boolean): String =
+            lines.asSequence().filter(region).mapNotNull { line ->
+                Regex("(?<![\\d])\\d{3,5}(?![\\d])")
+                    .find(line.text.replace(",", ""))?.value
+            }.firstOrNull() ?: "Not detected"
 
-        val playerLine = lines.firstOrNull {
-            Regex("(?i)^((player|you|opponent|enemy)\\s*[:：-]).+").containsMatchIn(it)
+        val opponentKing = valueIn { it.y < 0.16f && it.x in 0.30f..0.72f }
+        val opponentLeftTower = valueIn { it.y in 0.14f..0.34f && it.x < 0.40f }
+        val playerKing = valueIn { it.y in 0.66f..0.86f && it.x in 0.30f..0.72f }
+        val timer = lines.firstOrNull {
+            it.x > 0.68f && it.y < 0.14f && Regex("\\b\\d{1,2}:\\d{2}\\b").containsMatchIn(it.text)
+        }?.text ?: "Not detected"
+        val opponentName = lines.firstOrNull {
+            it.x < 0.34f && it.y < 0.085f &&
+                it.text.any(Char::isLetter) && !it.text.contains("clan", ignoreCase = true)
+        }?.text ?: "Not detected"
+
+        val notes = mutableListOf<String>()
+        val ours = playerKing.toIntOrNull()
+        val theirs = opponentKing.toIntOrNull()
+        if (ours != null && theirs != null) {
+            notes += when {
+                ours < theirs -> "Your King Tower has less remaining HP than the opponent's."
+                ours > theirs -> "Your King Tower has more remaining HP than the opponent's."
+                else -> "Both King Towers show the same HP."
+            }
         }
+        if (opponentLeftTower != "Not detected") {
+            notes += "The opponent's left Princess Tower is showing $opponentLeftTower HP."
+        }
+        if (timer != "Not detected") notes += "The visible match timer reads $timer."
 
         return buildString {
-            appendLine("MATCH SCREEN ANALYSIS")
+            appendLine("NULL'S ROYALE — MATCH SNAPSHOT")
             appendLine()
-            appendLine("Result: ${outcome ?: "Not detected"}")
-            appendLine("Trophy change: ${trophyValue ?: "Not detected"}")
-            appendLine("Crown score: ${crownScore ?: "Not detected"}")
-            appendLine("Player label: ${playerLine ?: "Not detected"}")
+            appendLine("SIDE MAPPING")
+            appendLine("Blue / bottom = You")
+            appendLine("Red / top = Opponent")
             appendLine()
-            append("Only explicit text labels are used. Missing values are left blank rather than guessed.")
+            appendLine("OPPONENT")
+            appendLine("Name: $opponentName")
+            appendLine("King Tower HP: $opponentKing")
+            appendLine("Left Princess Tower HP: $opponentLeftTower")
+            appendLine()
+            appendLine("YOU")
+            appendLine("King Tower HP: $playerKing")
+            appendLine()
+            appendLine("MATCH")
+            appendLine("Timer: $timer")
+            appendLine()
+            appendLine("SNAPSHOT INSIGHTS")
+            if (notes.isEmpty()) appendLine("Not enough positioned values were detected for a reliable comparison.")
+            else notes.forEach { appendLine("• $it") }
+            appendLine()
+            append("Single-frame analysis cannot reliably determine the winner, troop history, or why a play succeeded or failed. That needs multiple frames and match-level analysis.")
         }
     }
 }
