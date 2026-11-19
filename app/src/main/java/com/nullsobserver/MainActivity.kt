@@ -7,9 +7,11 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 
@@ -27,54 +29,88 @@ class MainActivity : Activity() {
         syncRecordingState()
     }
 
+    // All layout measurements use density-independent pixels so the UI scales
+    // with the POCO F6 display density instead of using tiny raw pixel values.
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
+
     private fun buildScreen() {
-        val root = LinearLayout(this).apply {
+        val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(28, 32, 28, 24)
+            setPadding(dp(20), dp(28), dp(20), dp(28))
             setBackgroundColor(0xFF101820.toInt())
         }
 
         val title = TextView(this).apply {
             text = "NULLS OBSERVER"
-            textSize = 24f
+            textSize = 26f
             setTextColor(0xFFFFFFFF.toInt())
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
         val subtitle = TextView(this).apply {
             text = "Local match recording & review"
-            textSize = 14f
+            textSize = 16f
             setTextColor(0xFFB8C7D1.toInt())
-            setPadding(0, 6, 0, 24)
+            setPadding(0, dp(8), 0, dp(28))
         }
         status = TextView(this).apply {
             text = "Screen recording is OFF"
-            textSize = 14f
+            textSize = 16f
             setTextColor(0xFFE4EDF2.toInt())
-            setPadding(0, 8, 0, 12)
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            minHeight = dp(60)
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(0xFF1C2A35.toInt())
         }
         toggle = Button(this).apply {
             text = "Turn recording ON"
+            textSize = 17f
+            isAllCaps = false
+            minHeight = dp(64)
+            minimumHeight = dp(64)
+            setPadding(dp(20), dp(12), dp(20), dp(12))
             setOnClickListener { toggleRecording() }
+            contentDescription = "Toggle screen recording on or off"
         }
         val refresh = Button(this).apply {
             text = "Refresh recordings"
+            textSize = 16f
+            isAllCaps = false
+            minHeight = dp(56)
+            minimumHeight = dp(56)
+            setPadding(dp(18), dp(10), dp(18), dp(10))
             setOnClickListener { refreshRecordings() }
         }
         val heading = TextView(this).apply {
             text = "Saved recordings"
-            textSize = 18f
+            textSize = 20f
             setTextColor(0xFFFFFFFF.toInt())
-            setPadding(0, 24, 0, 8)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, dp(28), 0, dp(12))
         }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        root.addView(title)
-        root.addView(subtitle)
-        root.addView(status)
-        root.addView(toggle, matchWidth())
-        root.addView(refresh, matchWidth())
-        root.addView(heading)
-        root.addView(list)
-        setContentView(root)
+        content.addView(title)
+        content.addView(subtitle)
+        content.addView(status, matchWidth().apply {
+            bottomMargin = dp(16)
+        })
+        content.addView(toggle, matchWidth().apply {
+            bottomMargin = dp(12)
+        })
+        content.addView(refresh, matchWidth())
+        content.addView(heading)
+        content.addView(list)
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            addView(content, ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+            setBackgroundColor(0xFF101820.toInt())
+        }
+        setContentView(scroll)
     }
 
     private fun matchWidth() = LinearLayout.LayoutParams(
@@ -144,23 +180,38 @@ class MainActivity : Activity() {
                 val name = cursor.getString(nameColumn)
                 val uri = Uri.withAppendedPath(collection, id.toString())
                 val item = TextView(this).apply {
-                    text = "▶  $name"
-                    textSize = 14f
+                    text = "▶   $name"
+                    textSize = 16f
                     setTextColor(0xFFD9E5EC.toInt())
-                    setPadding(4, 12, 4, 12)
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    minHeight = dp(60)
                     gravity = Gravity.CENTER_VERTICAL
+                    isClickable = true
+                    isFocusable = true
+                    background = selectableItemBackground()
                     setOnClickListener { openVideo(uri) }
                 }
-                list.addView(item)
+                list.addView(item, matchWidth().apply { bottomMargin = dp(6) })
             }
         }
         if (list.childCount == 0) {
             list.addView(TextView(this).apply {
                 text = "No recordings yet."
+                textSize = 16f
                 setTextColor(0xFFB8C7D1.toInt())
-                setPadding(4, 8, 4, 8)
+                setPadding(dp(4), dp(14), dp(4), dp(14))
+                minHeight = dp(56)
+                gravity = Gravity.CENTER_VERTICAL
             })
         }
+    }
+
+    private fun selectableItemBackground(): android.graphics.drawable.Drawable? {
+        val attrs = intArrayOf(android.R.attr.selectableItemBackground)
+        val typedArray = obtainStyledAttributes(attrs)
+        val drawable = typedArray.getDrawable(0)
+        typedArray.recycle()
+        return drawable
     }
 
     private fun openVideo(uri: Uri) {
