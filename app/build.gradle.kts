@@ -31,5 +31,6 @@ android {
 }
 
 dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("com.google.mlkit:text-recognition:16.0.1")
 }
