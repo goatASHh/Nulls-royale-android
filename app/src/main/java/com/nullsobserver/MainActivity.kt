@@ -214,7 +214,8 @@ class MainActivity : Activity() {
                     val output = if (extracted.isBlank()) {
                         "No readable game text was detected. Try a clearer screenshot."
                     } else {
-                        "SCREENSHOT TEXT\n\n$extracted\n\nNote: This is raw text recognition. Match statistics and gameplay interpretation will be added in a later bot update."
+                        ScreenshotGameParser.analyze(extracted) +
+                            "\n\nRECOGNIZED SCREENSHOT TEXT\n\n" + extracted
                     }
                     analysisResult.text = output
                     preferences.edit().putString(analysisKey, output).apply()
